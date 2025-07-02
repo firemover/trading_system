@@ -1,0 +1,35 @@
+{
+    "openvino": {
+        "installation_path": "/opt/intel/openvino",
+        "model_path": "model/trading_model.xml",
+        "device": "AUTO",
+        "cache_dir": "/tmp/ov_cache"
+    },
+    "bybit_api": {
+        "api_key": "YOUR_API_KEY",
+        "api_secret": "YOUR_API_SECRET",
+        "testnet": true,
+        "recv_window": 5000
+    },
+    "trading": {
+        "symbol": "BTCUSDT",
+        "interval": 15,
+        "train_window": 1000,
+        "predict_window": 50,
+        "max_trade_percentage": 2,
+        "stop_loss": 1.5,
+        "take_profit": 3.0
+    },
+    "model": {
+        "input_features": ["close", "volume", "sma20", "rsi"],
+        "threshold": 0.65,
+        "min_confidence": 0.6,
+        "train_epochs": 20,
+        "batch_size": 32,
+        "hidden_units": 64
+    },
+    "logging": {
+        "log_file": "logs/trading.log",
+        "log_level": "DEBUG"
+    }
+}
