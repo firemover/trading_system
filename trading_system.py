@@ -387,11 +387,11 @@ class TradingSystem:
                 return False
 
             # Place order
-            order = self.session.place_active_order(
+            order = self.session.place_order(
                 category="linear",
                 symbol=self.config['trading']['symbol'],
                 side=direction,
-                order_type="Market",
+                orderType="Market",
                 qty=str(amount),
                 stopLoss=str(price * (1 - self.config['trading']['stop_loss'] / 100)),
                 takeProfit=str(price * (1 + self.config['trading']['take_profit'] / 100))
