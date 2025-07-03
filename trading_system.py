@@ -347,20 +347,15 @@ class TradingSystem:
 
     def execute_trade(self, direction):
         try:
-            # Try both UNIFIED and CONTRACT account types for compatibility
-            usdt_balance = None
-            for account_type in ["UNIFIED", "CONTRACT"]:
-                balance_resp = self.session.get_wallet_balance(
-                    coin="USDT",
-                    accountType=account_type
-                )
-                logging.debug(f"{account_type} wallet balance response: {balance_resp}")
-                balance_list = balance_resp.get('result', {}).get('list', [])
-                usdt_balance = next((item for item in balance_list if item.get('coin') == 'USDT'), None)
-                logging.debug(f"{account_type} USDT balance entry: {usdt_balance}")
-                if usdt_balance and 'availableToWithdraw' in usdt_balance:
-                    break  # Found a valid balance
-
+            # Only use UNIFIED account type for wallet balance
+            balance_resp = self.session.get_wallet_balance(
+                coin="USDT",
+                accountType="UNIFIED"
+            )
+            logging.debug(f"UNIFIED wallet balance response: {balance_resp}")
+            balance_list = balance_resp.get('result', {}).get('list', [])
+            usdt_balance = next((item for item in balance_list if item.get('coin') == 'USDT'), None)
+            logging.debug(f"UNIFIED USDT balance entry: {usdt_balance}")
             if not usdt_balance or 'availableToWithdraw' not in usdt_balance:
                 logging.error("USDT balance not found in API response. Full response: %s", balance_resp)
                 return False
