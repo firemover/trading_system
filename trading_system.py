@@ -277,34 +277,29 @@ class TradingSystem:
 
     def predict(self, input_data):
         try:
-            logging.info(f"Starting prediction. Input data shape: {input_data.shape}")
-            # Проверка входных данных
             if np.isnan(input_data).any():
                 logging.error("Input data contains NaN values")
                 return None
 
             if input_data.shape[0] != 1:
                 input_data = np.expand_dims(input_data, axis=0)
-                logging.info(f"Input data reshaped to: {input_data.shape}")
 
-            # Получаем имя входного тензора
             input_name = next(iter(self.model.inputs)).any_name
-            logging.info(f"Using input tensor name: {input_name}")
-
-            # Выполняем предсказание
             results = self.model.infer_new_request({input_name: input_data})
 
-            # Получаем выходные данные
-            output_name = next(iter(self.model.outputs)).any_name
-            logging.info(f"Using output tensor name: {output_name}")
-            prediction = results[output_name][0][0]
+            # Log available result keys and model outputs
+            logging.debug(f"Results keys: {list(results.keys())}")
+            logging.debug(f"Model outputs: {[output.any_name for output in self.model.outputs]}")
 
-            # Проверка результата
+            # Use the first key from results
+            output_key = list(results.keys())[0]
+            prediction = results[output_key][0][0]
+
             if np.isnan(prediction):
                 logging.error("Prediction returned NaN")
                 return None
 
-            logging.info(f"Prediction result: {prediction:.4f}")
+            logging.debug(f"Raw prediction value: {prediction:.4f}")
             return float(prediction)
 
         except Exception as e:
