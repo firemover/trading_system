@@ -358,6 +358,29 @@ class TradingSystem:
             logging.error(f"Trading cycle error: {str(e)}", exc_info=True)
             return False
 
+    def get_symbol_step(self, symbol):
+        try:
+            info = self.session.get_instruments_info(
+                category="linear",
+                symbol=symbol
+            )
+            if (
+                info
+                and "result" in info
+                and "list" in info["result"]
+                and len(info["result"]["list"]) > 0
+            ):
+                instrument = info["result"]["list"][0]
+                min_qty = float(instrument.get("lotSizeFilter", {}).get("minOrderQty", 0.0))
+                qty_step = float(instrument.get("lotSizeFilter", {}).get("qtyStep", 0.0))
+                return min_qty, qty_step
+            else:
+                logging.warning(f"Could not fetch instrument info for {symbol}, using default step 0.001")
+                return 0.001, 0.001
+        except Exception as e:
+            logging.error(f"Failed to get symbol step: {str(e)}")
+            return 0.001, 0.001
+
     def execute_trade(self, direction):
         try:
             # Only use UNIFIED account type for wallet balance
@@ -367,7 +390,7 @@ class TradingSystem:
             )
             logging.debug(f"UNIFIED wallet balance response: {balance_resp}")
 
-            # Correctly extract USDT info from nested structure
+            # Extract USDT info
             account_list = balance_resp.get('result', {}).get('list', [])
             if not account_list or 'coin' not in account_list[0]:
                 logging.error("No account or coin info in API response. Full response: %s", balance_resp)
@@ -377,7 +400,6 @@ class TradingSystem:
             usdt_balance = next((item for item in coin_list if item.get('coin') == 'USDT'), None)
             logging.debug(f"UNIFIED USDT balance entry: {usdt_balance}")
 
-            # Use 'walletBalance' or 'equity' as fallback if 'availableToWithdraw' is empty
             balance_str = usdt_balance.get('availableToWithdraw') or usdt_balance.get('walletBalance') or usdt_balance.get('equity')
             if not usdt_balance or not balance_str or balance_str == "":
                 logging.error("USDT balance not found or empty in API response. Full response: %s", balance_resp)
@@ -391,15 +413,17 @@ class TradingSystem:
             )
             price = float(tickers['result']['list'][0]['lastPrice'])
 
-            # Calculate amount
-            step = 0.001  # minimal lot step for BTCUSDT
-            amount = balance * (self.config['trading']['max_trade_percentage'] / 100) / price
-            amount = max(step, amount)  # ensure at least minimal lot
-            amount = (int(amount / step)) * step  # round down to nearest step
-            amount = round(amount, 3)  # 3 decimals for BTCUSDT
+            # Get min_qty and qty_step for the symbol
+            min_qty, qty_step = self.get_symbol_step(self.config['trading']['symbol'])
 
-            if amount < step:
-                logging.error(f"Trade amount {amount} is below minimum lot size {step}")
+            # Calculate amount
+            amount = balance * (self.config['trading']['max_trade_percentage'] / 100) / price
+            amount = max(min_qty, amount)
+            amount = (int(amount / qty_step)) * qty_step  # round down to nearest step
+            amount = round(amount, 8)  # up to 8 decimals for altcoins
+
+            if amount < min_qty:
+                logging.error(f"Trade amount {amount} is below minimum lot size {min_qty}")
                 return False
 
             # Place order
