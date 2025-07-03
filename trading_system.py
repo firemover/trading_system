@@ -137,8 +137,9 @@ class TradingSystem:
                 device = self.select_device()
                 model = self.core.read_model(model_path)
                 self.model = self.core.compile_model(model, device)
-                
+                logging.info("Model loaded successfully in OpenVINO.")
                 # Проверка модели
+                
                 logging.info(f"Model inputs: {[input.any_name for input in self.model.inputs]}")
                 logging.info(f"Model outputs: {[output.any_name for output in self.model.outputs]}")
                 
