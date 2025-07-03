@@ -350,10 +350,13 @@ class TradingSystem:
             # Получаем баланс
             balance_resp = self.session.get_wallet_balance(
                 coin="USDT",
-                accountType="UNIFIED"  # or "CONTRACT" depending on your Bybit account type
+                accountType="UNIFIED"
             )
+            logging.debug(f"Full wallet balance response: {balance_resp}")
             balance_list = balance_resp['result']['list']
             usdt_balance = next((item for item in balance_list if item['coin'] == 'USDT'), None)
+            logging.debug(f"USDT balance entry: {usdt_balance}")
+
             if not usdt_balance or 'availableToWithdraw' not in usdt_balance:
                 logging.error("USDT balance not found in API response")
                 return False
