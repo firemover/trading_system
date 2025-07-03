@@ -347,37 +347,41 @@ class TradingSystem:
 
     def execute_trade(self, direction):
         try:
-            # Получаем баланс
-            balance_resp = self.session.get_wallet_balance(
-                coin="USDT",
-                accountType="UNIFIED"
-            )
-            logging.debug(f"Full wallet balance response: {balance_resp}")
-            balance_list = balance_resp['result']['list']
-            usdt_balance = next((item for item in balance_list if item['coin'] == 'USDT'), None)
-            logging.debug(f"USDT balance entry: {usdt_balance}")
+            # Try both UNIFIED and CONTRACT account types for compatibility
+            usdt_balance = None
+            for account_type in ["UNIFIED", "CONTRACT"]:
+                balance_resp = self.session.get_wallet_balance(
+                    coin="USDT",
+                    accountType=account_type
+                )
+                logging.debug(f"{account_type} wallet balance response: {balance_resp}")
+                balance_list = balance_resp.get('result', {}).get('list', [])
+                usdt_balance = next((item for item in balance_list if item.get('coin') == 'USDT'), None)
+                logging.debug(f"{account_type} USDT balance entry: {usdt_balance}")
+                if usdt_balance and 'availableToWithdraw' in usdt_balance:
+                    break  # Found a valid balance
 
             if not usdt_balance or 'availableToWithdraw' not in usdt_balance:
-                logging.error("USDT balance not found in API response")
+                logging.error("USDT balance not found in API response. Full response: %s", balance_resp)
                 return False
             balance = float(usdt_balance['availableToWithdraw'])
-            
-            # Получаем текущую цену
+
+            # Get current price
             tickers = self.session.get_tickers(
                 category="linear",
                 symbol=self.config['trading']['symbol']
             )
             price = float(tickers['result']['list'][0]['lastPrice'])
-            
-            # Рассчитываем количество
+
+            # Calculate amount
             amount = balance * (self.config['trading']['max_trade_percentage'] / 100) / price
             amount = round(amount, 4)
-            
+
             if amount <= 0:
                 logging.error("Invalid trade amount calculated")
                 return False
-                
-            # Выполняем ордер
+
+            # Place order
             order = self.session.place_active_order(
                 category="linear",
                 symbol=self.config['trading']['symbol'],
@@ -387,10 +391,10 @@ class TradingSystem:
                 stopLoss=str(price * (1 - self.config['trading']['stop_loss'] / 100)),
                 takeProfit=str(price * (1 + self.config['trading']['take_profit'] / 100))
             )
-            
+
             logging.info(f"Executed {direction} order for {amount} {self.config['trading']['symbol']}")
             return True
-            
+
         except Exception as e:
             logging.error(f"Trade execution failed: {str(e)}", exc_info=True)
             return False
