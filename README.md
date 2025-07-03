@@ -18,6 +18,14 @@
    python trading_system.py
    ```
 
+## Установка из GitHub
+Вы можете клонировать репозиторий и установить зависимости:
+```sh
+git clone https://github.com/firemover/trading_system.git
+cd trading_system
+pip install -r requirements.txt
+```
+
 ## Настройка
 - Укажите свои ключи API и параметры в `config.json`.
 - Логи сохраняются в папке `logs`.
