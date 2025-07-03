@@ -352,7 +352,12 @@ class TradingSystem:
                 coin="USDT",
                 accountType="UNIFIED"  # or "CONTRACT" depending on your Bybit account type
             )
-            balance = float(balance_resp['result']['available_balance'])
+            balance_list = balance_resp['result']['list']
+            usdt_balance = next((item for item in balance_list if item['coin'] == 'USDT'), None)
+            if not usdt_balance or 'availableToWithdraw' not in usdt_balance:
+                logging.error("USDT balance not found in API response")
+                return False
+            balance = float(usdt_balance['availableToWithdraw'])
             
             # Получаем текущую цену
             tickers = self.session.get_tickers(
