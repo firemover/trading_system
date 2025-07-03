@@ -23,7 +23,6 @@ class TradingSystem:
         self.scaler = MinMaxScaler(feature_range=(0, 1))
         self.core = Core()
         self.model = None
-        logging.info("Initializing TradingSystem class and model...")
         self.initialize_model()
 
     def load_config(self, path):
@@ -112,7 +111,7 @@ class TradingSystem:
             features = df[self.config['model']['input_features']]
             scaled = self.scaler.fit_transform(features)
             
-            X = np.array([
+            X = np.array([ 
                 scaled[i:i+self.config['trading']['predict_window']] 
                 for i in range(len(scaled)-self.config['trading']['predict_window'])
             ], dtype=np.float32)
@@ -130,52 +129,49 @@ class TradingSystem:
     def initialize_model(self):
         try:
             model_path = self.config['openvino']['model_path']
-            logging.info(f"Checking for model at path: {model_path}")
-
+            
             if not os.path.exists(model_path):
-                logging.warning("Model not found, starting training and export process...")
+                logging.warning("Model not found, starting training...")
                 self.train_and_save_model()
             else:
                 device = self.select_device()
-                logging.info(f"Loading OpenVINO model from {model_path} on device {device}")
                 model = self.core.read_model(model_path)
                 self.model = self.core.compile_model(model, device)
-                logging.info("Model loaded successfully in OpenVINO runtime.")
+                
+                # Log inputs and outputs after model is compiled
                 logging.info(f"Model inputs: {[input.any_name for input in self.model.inputs]}")
                 logging.info(f"Model outputs: {[output.any_name for output in self.model.outputs]}")
+                
                 logging.info(f"Model loaded on {device} device")
+
         except Exception as e:
-            logging.error(f"Model initialization failed: {str(e)}", exc_info=True)
+            logging.error(f"Model initialization failed: {str(e)}")
             raise
 
     def select_device(self):
         available_devices = self.core.available_devices
         logging.info(f"Available OpenVINO devices: {available_devices}")
         device = self.config['openvino']['device']
-        logging.info(f"Configured device: {device}")
         if device == "AUTO":
-            selected = "MYRIAD" if "MYRIAD" in available_devices else "CPU"
-            logging.info(f"Device AUTO selected: {selected}")
-            return selected
+            return "MYRIAD" if "MYRIAD" in available_devices else "CPU"
         if device not in available_devices:
             logging.error(f"Device {device} not available. Available: {available_devices}")
             raise RuntimeError(f"Device {device} not available")
-        logging.info(f"Selected device: {device}")
         return device
 
     def train_and_save_model(self):
         try:
             import tensorflow as tf
             from tf2onnx import convert
-
+            
             # 1. Prepare data
-            logging.info("Starting data preparation for model training...")
+            logging.info("Starting data preparation...")
             df = self.get_historical_data()
             X_train, y_train = self.preprocess_data(df)
             logging.info(f"Data prepared. X_train shape: {X_train.shape}, y_train shape: {y_train.shape}")
 
             # 2. Build model
-            logging.info("Building LSTM model architecture...")
+            logging.info("Building LSTM model...")
             inputs = tf.keras.Input(
                 shape=(self.config['trading']['predict_window'],
                        len(self.config['model']['input_features'])),
@@ -192,33 +188,21 @@ class TradingSystem:
             )(x)
             model = tf.keras.Model(inputs=inputs, outputs=outputs)
             model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-            logging.info("LSTM model compiled successfully.")
-
+            
             # 3. Train model
             logging.info("Starting model training...")
             history = model.fit(X_train, y_train,
                      epochs=self.config['model']['train_epochs'],
                      batch_size=self.config['model']['batch_size'],
                      validation_split=0.2)
-            logging.info("Model training completed.")
-
-            # Проверка точности
-            train_acc = history.history['accuracy'][-1]
-            val_acc = history.history['val_accuracy'][-1] if 'val_accuracy' in history.history else 0
-            logging.info(f"Training accuracy: {train_acc:.2%}, Validation accuracy: {val_acc:.2%}")
-            if train_acc < 0.7 or val_acc < 0.6:
-                logging.warning("Model accuracy is low, consider adjusting parameters")
-
-            # 4. Save as SavedModel
+            
+            # 4. Save model and convert to ONNX
             saved_model_path = 'model/temp_saved_model'
             os.makedirs('model', exist_ok=True)
-            logging.info(f"Saving TensorFlow model to {saved_model_path}...")
             tf.saved_model.save(model, saved_model_path)
-            logging.info("TensorFlow SavedModel saved successfully.")
-
-            # 5. Convert to ONNX
+            
+            # Convert to ONNX
             onnx_output_path = 'model/temp.onnx'
-            logging.info("Starting ONNX conversion...")
             convert_command = [
                 "python", "-m", "tf2onnx.convert",
                 "--saved-model", saved_model_path,
@@ -226,100 +210,66 @@ class TradingSystem:
                 "--opset", "13"
             ]
             subprocess.run(convert_command, check=True)
-            logging.info("ONNX conversion completed successfully.")
 
-            # Verify ONNX model
-            try:
-                onnx_model = onnx.load(onnx_output_path)
-                inputs = [input.name for input in onnx_model.graph.input]
-                outputs = [output.name for output in onnx_model.graph.output]
-                logging.info(f"ONNX model inputs: {inputs}")
-                logging.info(f"ONNX model outputs: {outputs}")
-                onnx.checker.check_model(onnx_model)
-                logging.info("ONNX model is valid")
-                input_name = inputs[0]
-                logging.info(f"Using input name for OpenVINO conversion: {input_name}")
-            except Exception as e:
-                logging.error(f"ONNX model verification failed: {str(e)}")
-                raise
-
-            # 6. Convert to OpenVINO IR
-            logging.info("Starting OpenVINO IR conversion...")
+            # Convert to OpenVINO
             ov_model = self.core.read_model(onnx_output_path)
-            try:
-                new_shape = PartialShape([1, self.config['trading']['predict_window'], 
-                                       len(self.config['model']['input_features'])])
-                ov_model.reshape({input_name: new_shape})
-                logging.info(f"Model reshaped successfully for input: {input_name}")
-            except Exception as e:
-                logging.error(f"Model reshape failed: {str(e)}")
-                raise
-
             serialize(ov_model, self.config['openvino']['model_path'])
-            logging.info(f"OpenVINO IR model saved to {self.config['openvino']['model_path']}")
+            
+            logging.info(f"OpenVINO model saved to {self.config['openvino']['model_path']}")
 
-            # 7. Load compiled model
+            # Load compiled model
             device = self.select_device()
-            logging.info(f"Compiling OpenVINO model for device: {device}")
             self.model = self.core.compile_model(ov_model, device)
-            logging.info(f"Model successfully loaded and compiled on {device} device")
+            logging.info(f"Model successfully loaded on {device} device")
 
         except Exception as e:
-            logging.error(f"Model training or export failed: {str(e)}", exc_info=True)
+            logging.error(f"Model training failed: {str(e)}", exc_info=True)
             raise
-        finally:
-            if os.path.exists(onnx_output_path):
-                os.remove(onnx_output_path)
-                logging.info(f"Removed temporary ONNX file: {onnx_output_path}")
-            if os.path.exists(saved_model_path):
-                shutil.rmtree(saved_model_path)
-                logging.info(f"Removed temporary SavedModel directory: {saved_model_path}")
 
     def predict(self, input_data):
         try:
-            logging.info(f"Starting prediction. Input data shape: {input_data.shape}")
-            # Проверка входных данных
+            # Check for NaN values in input data
             if np.isnan(input_data).any():
                 logging.error("Input data contains NaN values")
                 return None
-
+                
             if input_data.shape[0] != 1:
                 input_data = np.expand_dims(input_data, axis=0)
-                logging.info(f"Input data reshaped to: {input_data.shape}")
-
-            # Получаем имя входного тензора
+            
+            # Get input and output names
             input_name = next(iter(self.model.inputs)).any_name
-            logging.info(f"Using input tensor name: {input_name}")
-
-            # Выполняем предсказание
-            results = self.model.infer_new_request({input_name: input_data})
-
-            # Получаем выходные данные
             output_name = next(iter(self.model.outputs)).any_name
-            logging.info(f"Using output tensor name: {output_name}")
+            
+            # Perform prediction
+            results = self.model.infer_new_request({input_name: input_data})
+            
+            # Log raw prediction results
+            logging.debug(f"Raw prediction results: {results}")
+            
+            # Get the predicted value
             prediction = results[output_name][0][0]
-
-            # Проверка результата
+            
+            # Check if the prediction is NaN
             if np.isnan(prediction):
                 logging.error("Prediction returned NaN")
                 return None
-
-            logging.info(f"Prediction result: {prediction:.4f}")
+                
+            logging.debug(f"Raw prediction value: {prediction:.4f}")
             return float(prediction)
-
+            
         except Exception as e:
             logging.error(f"Prediction failed: {str(e)}", exc_info=True)
             return None
 
     def run_trading_cycle(self):
         try:
-            # Получаем данные
+            # Get historical data
             df = self.get_historical_data()
             if df.empty:
                 logging.error("No historical data received")
                 return False
                 
-            # Подготавливаем входные данные
+            # Prepare input data
             latest_data = df[self.config['model']['input_features']][-self.config['trading']['predict_window']:]
             scaled = self.scaler.transform(latest_data)
             
@@ -329,13 +279,13 @@ class TradingSystem:
                 
             input_data = np.expand_dims(scaled, axis=0).astype(np.float32)
             
-            # Получаем предсказание
+            # Get prediction
             prediction = self.predict(input_data)
             if prediction is None:
                 logging.warning("Prediction returned None")
                 return False
                 
-            # Обрабатываем результат
+            # Process result
             confidence = prediction if prediction >= 0.5 else 1 - prediction
             if confidence < self.config['model'].get('min_confidence', 0.6):
                 logging.info(f"Prediction confidence too low: {confidence:.2%}, skipping trade")
@@ -352,18 +302,18 @@ class TradingSystem:
 
     def execute_trade(self, direction):
         try:
-            # Получаем баланс
+            # Get balance
             balance_resp = self.session.get_wallet_balance(coin="USDT")
             balance = float(balance_resp['result']['available_balance'])
             
-            # Получаем текущую цену
+            # Get current price
             tickers = self.session.get_tickers(
                 category="linear",
                 symbol=self.config['trading']['symbol']
             )
             price = float(tickers['result']['list'][0]['lastPrice'])
             
-            # Рассчитываем количество
+            # Calculate amount to trade
             amount = balance * (self.config['trading']['max_trade_percentage'] / 100) / price
             amount = round(amount, 4)
             
@@ -371,7 +321,7 @@ class TradingSystem:
                 logging.error("Invalid trade amount calculated")
                 return False
                 
-            # Выполняем ордер
+            # Execute trade
             order = self.session.place_active_order(
                 category="linear",
                 symbol=self.config['trading']['symbol'],
