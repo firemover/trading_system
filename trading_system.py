@@ -64,34 +64,47 @@ class TradingSystem:
 
     def get_historical_data(self):
         try:
-            data = self.session.get_kline(
-                category="linear",
-                symbol=self.config['trading']['symbol'],
-                interval=str(self.config['trading']['interval']),
-                limit=self.config['trading']['train_window']
-            )
-            
-            if not data or 'result' not in data or not data['result'] or 'list' not in data['result']:
-                raise ValueError("Invalid API response format")
-                
+            total_needed = self.config['trading']['train_window']
+            all_records = []
+            last_start = None
+            symbol = self.config['trading']['symbol']
+            interval = str(self.config['trading']['interval'])
+            max_limit = 1000
+
+            while len(all_records) < total_needed:
+                limit = min(max_limit, total_needed - len(all_records))
+                params = {
+                    "category": "linear",
+                    "symbol": symbol,
+                    "interval": interval,
+                    "limit": limit
+                }
+                if last_start:
+                    params["start"] = last_start
+                data = self.session.get_kline(**params)
+                if not data or 'result' not in data or not data['result'] or 'list' not in data['result']:
+                    raise ValueError("Invalid API response format")
+                batch = data['result']['list']
+                if not batch:
+                    break
+                all_records = batch + all_records  # prepend to keep chronological order
+                last_start = int(batch[0][0]) - 1  # timestamp of the earliest candle - 1ms
+                if len(batch) < limit:
+                    break
+
             df = pd.DataFrame(
-                data['result']['list'],
+                all_records,
                 columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'turnover']
             )
-            
             df['timestamp'] = pd.to_numeric(df['timestamp'])
             df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
             df.set_index('datetime', inplace=True)
-            
             numeric_cols = ['open', 'high', 'low', 'close', 'volume', 'turnover']
             df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric)
-            
             df['sma20'] = df['close'].rolling(window=20).mean()
             df['rsi'] = self.calculate_rsi(df['close'], 14)
-            
             logging.info(f"Loaded {len(df)} historical records")
             return df.dropna()
-            
         except Exception as e:
             logging.error(f"Historical data error: {str(e)}")
             raise
@@ -336,7 +349,7 @@ class TradingSystem:
                 logging.info(f"Prediction confidence too low: {confidence:.2%}, skipping trade")
                 return False
                 
-            direction = "BUY" if prediction >= self.config['model']['threshold'] else "SELL"
+            direction = "Buy" if prediction >= self.config['model']['threshold'] else "Sell"
             logging.info(f"Prediction: {direction} (Confidence: {confidence:.2%}, Value: {prediction:.4f})")
             
             return self.execute_trade(direction)
