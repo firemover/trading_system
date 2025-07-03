@@ -353,13 +353,23 @@ class TradingSystem:
                 accountType="UNIFIED"
             )
             logging.debug(f"UNIFIED wallet balance response: {balance_resp}")
-            balance_list = balance_resp.get('result', {}).get('list', [])
-            usdt_balance = next((item for item in balance_list if item.get('coin') == 'USDT'), None)
-            logging.debug(f"UNIFIED USDT balance entry: {usdt_balance}")
-            if not usdt_balance or 'availableToWithdraw' not in usdt_balance:
-                logging.error("USDT balance not found in API response. Full response: %s", balance_resp)
+
+            # Correctly extract USDT info from nested structure
+            account_list = balance_resp.get('result', {}).get('list', [])
+            if not account_list or 'coin' not in account_list[0]:
+                logging.error("No account or coin info in API response. Full response: %s", balance_resp)
                 return False
-            balance = float(usdt_balance['availableToWithdraw'])
+
+            coin_list = account_list[0]['coin']
+            usdt_balance = next((item for item in coin_list if item.get('coin') == 'USDT'), None)
+            logging.debug(f"UNIFIED USDT balance entry: {usdt_balance}")
+
+            # Use 'walletBalance' or 'equity' as fallback if 'availableToWithdraw' is empty
+            balance_str = usdt_balance.get('availableToWithdraw') or usdt_balance.get('walletBalance') or usdt_balance.get('equity')
+            if not usdt_balance or not balance_str or balance_str == "":
+                logging.error("USDT balance not found or empty in API response. Full response: %s", balance_resp)
+                return False
+            balance = float(balance_str)
 
             # Get current price
             tickers = self.session.get_tickers(
