@@ -348,7 +348,10 @@ class TradingSystem:
     def execute_trade(self, direction):
         try:
             # Получаем баланс
-            balance_resp = self.session.get_wallet_balance(coin="USDT")
+            balance_resp = self.session.get_wallet_balance(
+                coin="USDT",
+                accountType="UNIFIED"  # or "CONTRACT" depending on your Bybit account type
+            )
             balance = float(balance_resp['result']['available_balance'])
             
             # Получаем текущую цену
