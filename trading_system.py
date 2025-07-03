@@ -150,9 +150,14 @@ class TradingSystem:
 
     def select_device(self):
         available_devices = self.core.available_devices
-        if self.config['openvino']['device'] == "AUTO":
+        logging.info(f"Available OpenVINO devices: {available_devices}")
+        device = self.config['openvino']['device']
+        if device == "AUTO":
             return "MYRIAD" if "MYRIAD" in available_devices else "CPU"
-        return self.config['openvino']['device']
+        if device not in available_devices:
+            logging.error(f"Device {device} not available. Available: {available_devices}")
+            raise RuntimeError(f"Device {device} not available")
+        return device
 
     def train_and_save_model(self):
         try:
