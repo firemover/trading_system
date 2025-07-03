@@ -392,11 +392,14 @@ class TradingSystem:
             price = float(tickers['result']['list'][0]['lastPrice'])
 
             # Calculate amount
+            step = 0.001  # minimal lot step for BTCUSDT
             amount = balance * (self.config['trading']['max_trade_percentage'] / 100) / price
-            amount = round(amount, 4)
+            amount = max(step, amount)  # ensure at least minimal lot
+            amount = (int(amount / step)) * step  # round down to nearest step
+            amount = round(amount, 3)  # 3 decimals for BTCUSDT
 
-            if amount <= 0:
-                logging.error("Invalid trade amount calculated")
+            if amount < step:
+                logging.error(f"Trade amount {amount} is below minimum lot size {step}")
                 return False
 
             # Place order
