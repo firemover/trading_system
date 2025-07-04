@@ -432,6 +432,14 @@ class TradingSystem:
                 logging.error(f"Trade amount {amount} is below minimum lot size {min_qty}")
                 return False
 
+            # Calculate stopLoss and takeProfit based on direction
+            if direction == "Buy":
+                stop_loss = price * (1 - self.config['trading']['stop_loss'] / 100)
+                take_profit = price * (1 + self.config['trading']['take_profit'] / 100)
+            else:  # Sell
+                stop_loss = price * (1 + self.config['trading']['stop_loss'] / 100)
+                take_profit = price * (1 - self.config['trading']['take_profit'] / 100)
+
             # Place order
             order = self.session.place_order(
                 category="linear",
@@ -439,8 +447,8 @@ class TradingSystem:
                 side=direction,
                 orderType="Market",
                 qty=str(amount),
-                stopLoss=str(price * (1 - self.config['trading']['stop_loss'] / 100)),
-                takeProfit=str(price * (1 + self.config['trading']['take_profit'] / 100))
+                stopLoss=str(stop_loss),
+                takeProfit=str(take_profit)
             )
 
             logging.info(f"Executed {direction} order for {amount} {self.config['trading']['symbol']}")
