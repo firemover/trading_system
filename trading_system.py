@@ -238,7 +238,7 @@ class TradingSystem:
                 epochs=self.config['model']['train_epochs'],
                 batch_size=self.config['model']['batch_size'],
                 validation_split=0.2,
-                callbacks=[TqdmCallback(verbose=1)]
+                callbacks=[TqdmCallback(verbose=0, leave=True)]  # verbose=0 — компактно, leave=True — строка останется после обучения
             )
             logging.info("Model training completed.")
 
