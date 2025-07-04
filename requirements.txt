@@ -5,4 +5,6 @@ pybit>=2.6.0
 tensorflow>=2.8.0
 tf2onnx>=1.11.0
 onnx>=1.12.0
-openvino>=2022.1.0
+# OpenVINO 2022.1.0–2023.3.0 поддерживает Intel NCS2 (MYRIAD)
+openvino>=2022.1.0,<2023.3.1
+colorama>=0.4.6
