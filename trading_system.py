@@ -55,10 +55,11 @@ class SquareBar(TqdmCallback):
 
     def on_epoch_end(self, epoch, logs=None):
         color = self.COLORS[0]
-        self.bar.update(1)
-        # Показываем прогресс цветными квадратами
         squares = color + '■' * (epoch + 1) + Style.RESET_ALL
+        # Формируем строку из квадратиков и заполняем до длины self.epochs
+        squares += ' ' * (self.epochs - (epoch + 1))
         self.bar.set_description_str(squares)
+        self.bar.update(1)
         if epoch + 1 == self.epochs:
             self.bar.close()
 
