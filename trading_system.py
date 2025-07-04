@@ -14,6 +14,23 @@ from datetime import datetime, timedelta
 from sklearn.preprocessing import MinMaxScaler
 from pybit.unified_trading import HTTP
 from openvino.runtime import Core, serialize, PartialShape
+import colorama
+from colorama import Fore, Style
+
+colorama.init(autoreset=True)
+
+class ColorFormatter(logging.Formatter):
+    COLORS = {
+        logging.DEBUG: Fore.CYAN,
+        logging.INFO: Fore.GREEN,
+        logging.WARNING: Fore.YELLOW,
+        logging.ERROR: Fore.RED,
+        logging.CRITICAL: Fore.MAGENTA
+    }
+    def format(self, record):
+        color = self.COLORS.get(record.levelno, "")
+        message = super().format(record)
+        return f"{color}{message}{Style.RESET_ALL}"
 
 class TradingSystem:
     def __init__(self, config_path='config.json'):
@@ -43,8 +60,8 @@ class TradingSystem:
         )
         console = logging.StreamHandler()
         console.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        console.setFormatter(formatter)
+        color_formatter = ColorFormatter('%(asctime)s - %(levelname)s - %(message)s')
+        console.setFormatter(color_formatter)
         logging.getLogger('').addHandler(console)
         logging.info("Trading system initialized")
 
