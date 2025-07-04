@@ -17,6 +17,7 @@ from openvino.runtime import Core, serialize, PartialShape
 import colorama
 from colorama import Fore, Style
 from tqdm.keras import TqdmCallback
+from tqdm import tqdm
 
 colorama.init(autoreset=True)
 
@@ -32,6 +33,38 @@ class ColorFormatter(logging.Formatter):
         color = self.COLORS.get(record.levelno, "")
         message = super().format(record)
         return f"{color}{message}{Style.RESET_ALL}"
+
+class SquareBar(TqdmCallback):
+    COLORS = [
+        Fore.GREEN,  # completed
+        Fore.YELLOW, # running
+        Fore.RED     # error
+    ]
+    def __init__(self, epochs, **kwargs):
+        super().__init__(**kwargs)
+        self.epochs = epochs
+        self.bar = None
+
+    def on_train_begin(self, logs=None):
+        self.bar = tqdm(
+            total=self.epochs,
+            bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} Epochs',
+            ncols=40,
+            leave=True
+        )
+
+    def on_epoch_end(self, epoch, logs=None):
+        color = self.COLORS[0]
+        self.bar.update(1)
+        # Показываем прогресс цветными квадратами
+        squares = color + '■' * (epoch + 1) + Style.RESET_ALL
+        self.bar.set_description_str(squares)
+        if epoch + 1 == self.epochs:
+            self.bar.close()
+
+    def on_train_end(self, logs=None):
+        if self.bar:
+            self.bar.close()
 
 class TradingSystem:
     def __init__(self, config_path='config.json'):
@@ -238,7 +271,7 @@ class TradingSystem:
                 epochs=self.config['model']['train_epochs'],
                 batch_size=self.config['model']['batch_size'],
                 validation_split=0.2,
-                callbacks=[TqdmCallback(verbose=0, leave=True)]  # verbose=0 — компактно, leave=True — строка останется после обучения
+                callbacks=[SquareBar(self.config['model']['train_epochs'], verbose=0)]
             )
             logging.info("Model training completed.")
 
