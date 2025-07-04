@@ -535,11 +535,47 @@ class TradingSystem:
 
     def run(self):
         logging.info("Starting trading bot")
-        last_retrain = time.time()
-        retrain_interval = self.config['model'].get('retrain_interval_hours', 24) * 3600  # в секундах
+        # Интервалы для разных типов переобучения
+        retrain_interval = self.config['model'].get('retrain_interval_hours', 1) * 3600  # по умолчанию 1 час
+        position_retrain_interval = self.config['model'].get('position_retrain_interval_hours', retrain_interval / 3600) * 3600
+
+        last_retrain = time.time()  # последнее переобучение по расписанию
+        last_position_retrain = None  # последнее переобучение из-за долгой открытой позиции
+        position_open_time = None  # время, когда обнаружена открытая позиция
+
         try:
             while True:
                 start_time = time.time()
+
+                # Проверяем открытую позицию
+                if self.has_open_position():
+                    if position_open_time is None:
+                        position_open_time = time.time()
+                        logging.info("Open position detected, skipping trading cycles.")
+                    else:
+                        elapsed = time.time() - position_open_time
+                        # Переобучение только если не было недавно по позиции
+                        if (last_position_retrain is None) or (time.time() - last_position_retrain >= position_retrain_interval):
+                            if elapsed >= position_retrain_interval:
+                                logging.info("Open position held too long, retraining model by interval (position)...")
+                                self.train_and_save_model()
+                                self.initialize_model()
+                                last_position_retrain = time.time()
+                                position_open_time = time.time()  # сбрасываем таймер после переобучения
+                    logging.info("Skipping cycle: position already open.")
+                    time.sleep(60)
+                    continue
+                else:
+                    position_open_time = None  # сбросить, если позиции нет
+
+                # Переобучение по расписанию (если не было по позиции)
+                if (time.time() - last_retrain >= retrain_interval) and (
+                    last_position_retrain is None or time.time() - last_position_retrain >= position_retrain_interval
+                ):
+                    logging.info("Retraining model by schedule...")
+                    self.train_and_save_model()
+                    self.initialize_model()
+                    last_retrain = time.time()
 
                 # Принудительное переобучение, если был флаг
                 if getattr(self, "force_retrain", False):
@@ -548,13 +584,6 @@ class TradingSystem:
                     self.initialize_model()
                     last_retrain = time.time()
                     self.force_retrain = False
-
-                # Переобучение по расписанию
-                elif time.time() - last_retrain >= retrain_interval:
-                    logging.info("Retraining model by schedule...")
-                    self.train_and_save_model()
-                    self.initialize_model()
-                    last_retrain = time.time()
 
                 if not self.run_trading_cycle():
                     logging.warning("Cycle failed, retrying in 1 minute")

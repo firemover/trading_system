@@ -27,7 +27,8 @@
         "train_epochs": 20,
         "batch_size": 32,
         "hidden_units": 64,
-        "retrain_interval_hours": 6
+        "retrain_interval_hours": 1,
+        "position_retrain_interval_hours": 2
     },
     "logging": {
         "log_file": "logs/trading.log",
