@@ -157,6 +157,12 @@ class TradingSystem:
                 logging.info(f"Model inputs: {[input.any_name for input in self.model.inputs]}")
                 logging.info(f"Model outputs: {[output.any_name for output in self.model.outputs]}")
                 logging.info(f"Model loaded on {device} device")
+
+                # Fit scaler on historical data for inference
+                df = self.get_historical_data()
+                features = df[self.config['model']['input_features']]
+                self.scaler.fit(features)
+                logging.info("MinMaxScaler fitted on historical data for inference.")
         except Exception as e:
             logging.error(f"Model initialization failed: {str(e)}", exc_info=True)
             raise
