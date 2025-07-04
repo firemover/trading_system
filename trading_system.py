@@ -16,6 +16,7 @@ from pybit.unified_trading import HTTP
 from openvino.runtime import Core, serialize, PartialShape
 import colorama
 from colorama import Fore, Style
+from tqdm.keras import TqdmCallback
 
 colorama.init(autoreset=True)
 
@@ -232,10 +233,13 @@ class TradingSystem:
 
             # 3. Train model
             logging.info("Starting model training...")
-            history = model.fit(X_train, y_train,
-                     epochs=self.config['model']['train_epochs'],
-                     batch_size=self.config['model']['batch_size'],
-                     validation_split=0.2)
+            history = model.fit(
+                X_train, y_train,
+                epochs=self.config['model']['train_epochs'],
+                batch_size=self.config['model']['batch_size'],
+                validation_split=0.2,
+                callbacks=[TqdmCallback(verbose=1)]
+            )
             logging.info("Model training completed.")
 
             # Проверка точности
@@ -477,10 +481,20 @@ class TradingSystem:
 
     def run(self):
         logging.info("Starting trading bot")
+        last_retrain = time.time()
+        retrain_interval = self.config['model'].get('retrain_interval_hours', 24) * 3600  # в секундах
         try:
             while True:
                 start_time = time.time()
-                
+
+                # Переобучение по расписанию
+                if time.time() - last_retrain >= retrain_interval:
+                    logging.info("Retraining model by schedule...")
+                    self.train_and_save_model()
+                    # После переобучения обязательно подгружаем модель и обновляем scaler
+                    self.initialize_model()
+                    last_retrain = time.time()
+
                 if not self.run_trading_cycle():
                     logging.warning("Cycle failed, retrying in 1 minute")
                     time.sleep(60)
