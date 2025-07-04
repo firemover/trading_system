@@ -88,7 +88,7 @@ class TradingSystem:
                 if not batch:
                     break
                 all_records = batch + all_records  # prepend to keep chronological order
-                last_start = int(batch[0][0]) - 1  # timestamp of the earliest candle - 1ms
+                last_start = int(batch[-1][0]) - 1  # <-- исправлено!
                 if len(batch) < limit:
                     break
 
