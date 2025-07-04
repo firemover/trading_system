@@ -383,6 +383,9 @@ class TradingSystem:
 
     def run_trading_cycle(self):
         try:
+            if self.has_open_position():
+                logging.info("Skipping cycle: position already open.")
+                return False
             # Получаем данные
             df = self.get_historical_data()
             if df.empty:
@@ -513,6 +516,21 @@ class TradingSystem:
 
         except Exception as e:
             logging.error(f"Trade execution failed: {str(e)}", exc_info=True)
+            return False
+
+    def has_open_position(self):
+        try:
+            positions = self.session.get_positions(
+                category="linear",
+                symbol=self.config['trading']['symbol']
+            )
+            for pos in positions.get('result', {}).get('list', []):
+                if float(pos.get('size', 0)) != 0:
+                    logging.info(f"Open position detected: {pos}")
+                    return True
+            return False
+        except Exception as e:
+            logging.error(f"Failed to check open positions: {str(e)}")
             return False
 
     def run(self):
