@@ -75,6 +75,7 @@ class TradingSystem:
         self.scaler = MinMaxScaler(feature_range=(0, 1))
         self.core = Core()
         self.model = None
+        self.force_retrain = False  # <--- добавлено
         logging.info("Initializing TradingSystem class and model...")
         self.initialize_model()
 
@@ -387,34 +388,35 @@ class TradingSystem:
             if df.empty:
                 logging.error("No historical data received")
                 return False
-                
+
             # Подготавливаем входные данные
             latest_data = df[self.config['model']['input_features']][-self.config['trading']['predict_window']:]
             scaled = self.scaler.transform(latest_data)
-            
+
             if np.isnan(scaled).any():
                 logging.error("Input data contains NaN values after scaling")
                 return False
-                
+
             input_data = np.expand_dims(scaled, axis=0).astype(np.float32)
-            
+
             # Получаем предсказание
             prediction = self.predict(input_data)
             if prediction is None:
                 logging.warning("Prediction returned None")
                 return False
-                
+
             # Обрабатываем результат
             confidence = prediction if prediction >= 0.5 else 1 - prediction
             if confidence < self.config['model'].get('min_confidence', 0.6):
                 logging.info(f"Prediction confidence too low: {confidence:.2%}, skipping trade")
+                self.force_retrain = True  # <--- флаг для принудительного переобучения
                 return False
-                
+
             direction = "Buy" if prediction >= self.config['model']['threshold'] else "Sell"
             logging.info(f"Prediction: {direction} (Confidence: {confidence:.2%}, Value: {prediction:.4f})")
-            
+
             return self.execute_trade(direction)
-            
+
         except Exception as e:
             logging.error(f"Trading cycle error: {str(e)}", exc_info=True)
             return False
@@ -521,11 +523,18 @@ class TradingSystem:
             while True:
                 start_time = time.time()
 
+                # Принудительное переобучение, если был флаг
+                if getattr(self, "force_retrain", False):
+                    logging.info("Forcing retraining due to low prediction confidence...")
+                    self.train_and_save_model()
+                    self.initialize_model()
+                    last_retrain = time.time()
+                    self.force_retrain = False
+
                 # Переобучение по расписанию
-                if time.time() - last_retrain >= retrain_interval:
+                elif time.time() - last_retrain >= retrain_interval:
                     logging.info("Retraining model by schedule...")
                     self.train_and_save_model()
-                    # После переобучения обязательно подгружаем модель и обновляем scaler
                     self.initialize_model()
                     last_retrain = time.time()
 
@@ -533,12 +542,12 @@ class TradingSystem:
                     logging.warning("Cycle failed, retrying in 1 minute")
                     time.sleep(60)
                     continue
-                    
+
                 cycle_time = time.time() - start_time
                 sleep_time = max(0, self.config['trading']['interval'] * 60 - cycle_time)
                 logging.info(f"Cycle completed in {cycle_time:.2f}s, next in {sleep_time:.1f}s")
                 time.sleep(sleep_time)
-                
+
         except KeyboardInterrupt:
             logging.info("Trading system stopped by user")
         except Exception as e:
